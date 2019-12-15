@@ -1,3 +1,5 @@
+(* copyright (C)2013 Niklaus Wirth (NW), Juerg Gutknecht (JG), Paul Reed (PR/PDR). *)
+
 MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
   IMPORT Files, ORS;
   (*Definition of data types Object and Type, which together form the data structure

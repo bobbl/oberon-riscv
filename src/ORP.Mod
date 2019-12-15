@@ -1,3 +1,5 @@
+(* copyright (C)2013 Niklaus Wirth (NW), Juerg Gutknecht (JG), Paul Reed (PR/PDR). *)
+
 MODULE ORP; (*N. Wirth 1.7.97 / 31.5.2019  Oberon compiler for RISC in Oberon-07*)
   IMPORT Texts, Oberon, ORS, ORB, ORG;
   (*Author: Niklaus Wirth, 2014.
