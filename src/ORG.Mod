@@ -1,4 +1,5 @@
 (* copyright (C)2013 Niklaus Wirth (NW), Juerg Gutknecht (JG), Paul Reed (PR/PDR). *)
+(* modified by Jörg Mische *)
 
 MODULE ORG; (* N.Wirth, 16.4.2016 / 4.4.2017 / 31.5.2019  Oberon compiler; code generator for RISC*)
   IMPORT SYSTEM, Files, ORS, ORB;
@@ -1032,7 +1033,7 @@ MODULE ORG; (* N.Wirth, 16.4.2016 / 4.4.2017 / 31.5.2019  Oberon compiler; code 
     RETURN n
   END NofPtrs;
 
-  PROCEDURE FindPtrs(VAR R: Files.Rider; typ: ORB.Type; adr: LONGINT);
+  PROCEDURE FindPtrs(VAR R: Files.File; typ: ORB.Type; adr: LONGINT);
     VAR fld: ORB.Object; i, s: LONGINT;
   BEGIN
     IF (typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp) THEN Files.WriteInt(R, adr)
@@ -1049,7 +1050,7 @@ MODULE ORG; (* N.Wirth, 16.4.2016 / 4.4.2017 / 31.5.2019  Oberon compiler; code 
     VAR obj: ORB.Object;
       i, comsize, nofimps, nofptrs, size: LONGINT;
       name: ORS.Ident;
-      F: Files.File; R: Files.Rider;
+      R: Files.File;
   BEGIN  (*exit code*)
     IF version = 0 THEN Put1(Mov, 0, 0, 0); Put3(BR, 7, 0)  (*RISC-0*)
     ELSE Put2(Ldr, LNK, SP, 0); Put1(Add, SP, SP, 4); Put3(BR, 7, LNK)
@@ -1068,31 +1069,31 @@ MODULE ORG; (* N.Wirth, 16.4.2016 / 4.4.2017 / 31.5.2019  Oberon compiler; code 
     size := varsize + strx + comsize + (pc + nofimps + nofent + nofptrs + 1)*4;  (*varsize includes type descriptors*)
     
     ORB.MakeFileName(name, modid, ".rsc"); (*write code file*)
-    F := Files.New(name); Files.Set(R, F, 0); Files.WriteString(R, modid); Files.WriteInt(R, key); Files.Write(R, CHR(version));
+    R := Files.Open(name); Files.WriteAsciiStr(R, modid); Files.WriteInt(R, key); Files.Write(R, version);
     Files.WriteInt(R, size);
     obj := ORB.topScope.next;
     WHILE (obj # NIL) & (obj.class = ORB.Mod) DO  (*imports*)
-      IF obj.dsc # ORB.system THEN Files.WriteString(R, obj(ORB.Module).orgname); Files.WriteInt(R, obj.val) END ;
+      IF obj.dsc # ORB.system THEN Files.WriteAsciiStr(R, obj(ORB.Module).orgname); Files.WriteInt(R, obj.val) END ;
       obj := obj.next
     END ;
-    Files.Write(R, 0X);
+    Files.Write(R, 0);
     Files.WriteInt(R, tdx*4);
     i := 0;
     WHILE i < tdx DO Files.WriteInt(R, data[i]); INC(i) END ; (*type descriptors*)
     Files.WriteInt(R, varsize - tdx*4);  (*data*)
     Files.WriteInt(R, strx);
-    FOR i := 0 TO strx-1 DO Files.Write(R, str[i]) END ;  (*strings*)
+    FOR i := 0 TO strx-1 DO Files.WriteChar(R, str[i]) END ;  (*strings*)
     Files.WriteInt(R, pc);  (*code len*)
     FOR i := 0 TO pc-1 DO Files.WriteInt(R, code[i]) END ;  (*program*)
     obj := ORB.topScope.next;
     WHILE obj # NIL DO  (*commands*)
       IF (obj.exno # 0) & (obj.class = ORB.Const) & (obj.type.form = ORB.Proc) &
           (obj.type.nofpar = 0) & (obj.type.base = ORB.noType) THEN
-        Files.WriteString(R, obj.name); Files.WriteInt(R, obj.val)
+        Files.WriteAsciiStr(R, obj.name); Files.WriteInt(R, obj.val)
       END ;
       obj := obj.next
     END ;
-    Files.Write(R, 0X);
+    Files.Write(R, 0);
     Files.WriteInt(R, nofent); Files.WriteInt(R, entry);
     obj := ORB.topScope.next;
     WHILE obj # NIL DO  (*entries*)
@@ -1115,7 +1116,7 @@ MODULE ORG; (* N.Wirth, 16.4.2016 / 4.4.2017 / 31.5.2019  Oberon compiler; code 
     END ;
     Files.WriteInt(R, -1);
     Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, entry);
-    Files.Write(R, "O"); Files.Register(F)
+    Files.WriteChar(R, "O"); Files.Close(R)
   END Close;
 
 BEGIN relmap[0] := 1; relmap[1] := 9; relmap[2] := 5; relmap[3] := 6; relmap[4] := 14; relmap[5] := 13;

@@ -1,4 +1,5 @@
 (* copyright (C)2013 Niklaus Wirth (NW), Juerg Gutknecht (JG), Paul Reed (PR/PDR). *)
+(* modified by Jörg Mische *)
 
 MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
   IMPORT Files, ORS;
@@ -146,13 +147,13 @@ MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
     RETURN obj
   END ThisModule;
   
-  PROCEDURE Read(VAR R: Files.Rider; VAR x: INTEGER);
+  PROCEDURE Read(VAR R: Files.File; VAR x: INTEGER);
     VAR b: BYTE;
-  BEGIN Files.ReadByte(R, b);
+  BEGIN b := Files.Read(R);
     IF b < 80H THEN x := b ELSE x := b - 100H END
   END Read;
   
-  PROCEDURE InType(VAR R: Files.Rider; thismod: Object; VAR T: Type);
+  PROCEDURE InType(VAR R: Files.File; thismod: Object; VAR T: Type);
     VAR key: LONGINT;
       ref, class, form, np, readonly: INTEGER;
       fld, par, obj, mod, last: Object;
@@ -164,20 +165,20 @@ MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
       Read(R, form); t.form := form;
       IF form = Pointer THEN InType(R, thismod, t.base); t.size := 4
       ELSIF form = Array THEN
-        InType(R, thismod, t.base); Files.ReadNum(R, t.len); Files.ReadNum(R, t.size)
+        InType(R, thismod, t.base); t.len := Files.ReadNum(R); t.size := Files.ReadNum(R)
       ELSIF form = Record THEN
         InType(R, thismod, t.base);
         IF t.base.form = NoTyp THEN t.base := NIL; obj := NIL ELSE obj := t.base.dsc END ;
-        Files.ReadNum(R, t.len); (*TD adr/exno*)
-        Files.ReadNum(R, t.nofpar);  (*ext level*)
-        Files.ReadNum(R, t.size);
+        t.len := Files.ReadNum(R); (*TD adr/exno*)
+        t.nofpar := Files.ReadNum(R);  (*ext level*)
+        t.size := Files.ReadNum(R);
         Read(R, class); last := NIL;
         WHILE class # 0 DO  (*fields*)
-          NEW(fld); fld.class := class; Files.ReadString(R, fld.name);
+          NEW(fld); fld.class := class; Files.ReadAsciiStr(R, fld.name);
           IF last = NIL THEN t.dsc := fld ELSE last.next := fld END ;
           last := fld;
           IF fld.name[0] # 0X THEN fld.expo := TRUE; InType(R, thismod, fld.type) ELSE fld.expo := FALSE; fld.type := nilType END ;
-          Files.ReadNum(R, fld.val); Read(R, class)
+          fld.val := Files.ReadNum(R); Read(R, class)
         END ;
         IF last = NIL THEN t.dsc := obj ELSE last.next := obj END
       ELSIF form = Proc THEN
@@ -189,9 +190,9 @@ MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
         END ;
         t.dsc := obj; t.nofpar := np; t.size := 4
       END ;
-      Files.ReadString(R, modname);
+      Files.ReadAsciiStr(R, modname);
       IF modname[0] #  0X THEN  (*re-import*)
-        Files.ReadInt(R, key); Files.ReadString(R, name);
+        key := Files.ReadInt(R); Files.ReadAsciiStr(R, name);
         mod := ThisModule(modname, modname, FALSE, key);
         obj := mod.dsc;  (*search type*)
         WHILE (obj # NIL) & (obj.name # name) DO obj := obj.next END ;
@@ -210,28 +211,28 @@ MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
       obj: Object;  t: Type;
       thismod: Object;
       modname, fname: ORS.Ident;
-      F: Files.File; R: Files.Rider;
+      R: Files.File;
   BEGIN
     IF modid1 = "SYSTEM" THEN
       thismod := ThisModule(modid, modid1, TRUE, key); DEC(nofmod);
       thismod.lev := 0; thismod.dsc := system; thismod.rdo := TRUE
-    ELSE MakeFileName(fname, modid1, ".smb"); F := Files.Old(fname);
-      IF F # NIL THEN
-        Files.Set(R, F, 0); Files.ReadInt(R, key); Files.ReadInt(R, key); Files.ReadString(R, modname);
+    ELSE MakeFileName(fname, modid1, ".smb"); R := Files.Open(fname);
+      IF R # NIL THEN
+        key := Files.ReadInt(R); key := Files.ReadInt(R); Files.ReadAsciiStr(R, modname);
         thismod := ThisModule(modid, modid1, TRUE, key); thismod.rdo := TRUE;
         Read(R, class); (*version key*)
         IF class # versionkey THEN ORS.Mark("wrong version") END ;
         Read(R, class);
         WHILE class # 0 DO
-          NEW(obj); obj.class := class; Files.ReadString(R, obj.name);
+          NEW(obj); obj.class := class; Files.ReadAsciiStr(R, obj.name);
           InType(R, thismod, obj.type); obj.lev := -thismod.lev;
           IF class = Typ THEN
             t := obj.type; t.typobj := obj; Read(R, k);  (*fixup bases of previously declared pointer types*)
             WHILE k # 0 DO typtab[k].base := t; Read(R, k) END
           ELSE
             IF class = Const THEN
-              IF obj.type.form = Real THEN Files.ReadInt(R, obj.val) ELSE Files.ReadNum(R, obj.val) END
-            ELSIF class = Var THEN Files.ReadNum(R, obj.val); obj.rdo := TRUE
+              IF obj.type.form = Real THEN obj.val := Files.ReadInt(R) ELSE obj.val := Files.ReadNum(R) END
+            ELSIF class = Var THEN obj.val := Files.ReadNum(R); obj.rdo := TRUE
             END
           END ;
           obj.next := thismod.dsc; thismod.dsc := obj; Read(R, class)
@@ -243,14 +244,14 @@ MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
   
   (*-------------------------------- Export ---------------------------------*)
 
-  PROCEDURE Write(VAR R: Files.Rider; x: INTEGER);
-  BEGIN Files.WriteByte(R, x)
+  PROCEDURE Write(VAR R: Files.File; x: INTEGER);
+  BEGIN Files.Write(R, x)
   END Write;
 
-  PROCEDURE OutType(VAR R: Files.Rider; t: Type);
+  PROCEDURE OutType(VAR R: Files.File; t: Type);
     VAR obj, mod, fld, bot: Object;
 
-    PROCEDURE OutPar(VAR R: Files.Rider; par: Object; n: INTEGER);
+    PROCEDURE OutPar(VAR R: Files.File; par: Object; n: INTEGER);
       VAR cl: INTEGER;
     BEGIN
       IF n > 0 THEN
@@ -261,7 +262,7 @@ MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
       END
     END OutPar;
 
-    PROCEDURE FindHiddenPointers(VAR R: Files.Rider; typ: Type; offset: LONGINT);
+    PROCEDURE FindHiddenPointers(VAR R: Files.File; typ: Type; offset: LONGINT);
       VAR fld: Object; i, n: LONGINT;
     BEGIN
       IF (typ.form = Pointer) OR (typ.form = NilTyp) THEN Write(R, Fld); Write(R, 0); Files.WriteNum(R, offset)
@@ -286,7 +287,7 @@ MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
         fld := t.dsc;
         WHILE fld # bot DO  (*fields*)
           IF fld.expo THEN
-            Write(R, Fld); Files.WriteString(R, fld.name); OutType(R, fld.type); Files.WriteNum(R, fld.val)  (*offset*)
+            Write(R, Fld); Files.WriteAsciiStr(R, fld.name); OutType(R, fld.type); Files.WriteNum(R, fld.val)  (*offset*)
           ELSE FindHiddenPointers(R, fld.type, fld.val)
           END ;
           fld := fld.next
@@ -297,7 +298,7 @@ MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
       IF (t.mno > 0) & (obj # NIL) THEN  (*re-export, output name*)
         mod := topScope.next;
         WHILE (mod # NIL) & (mod.lev # t.mno) DO mod := mod.next END ;
-        IF mod # NIL THEN Files.WriteString(R, mod(Module).orgname); Files.WriteInt(R, mod.val); Files.WriteString(R, obj.name)
+        IF mod # NIL THEN Files.WriteAsciiStr(R, mod(Module).orgname); Files.WriteInt(R, mod.val); Files.WriteAsciiStr(R, obj.name)
         ELSE ORS.Mark("re-export not found"); Write(R, 0)
         END
       ELSE Write(R, 0)
@@ -309,16 +310,16 @@ MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
     VAR x, sum, oldkey: LONGINT;
       obj, obj0: Object;
       filename: ORS.Ident;
-      F, F1: Files.File; R, R1: Files.Rider;
+      R, R1: Files.File;
   BEGIN Ref := Record + 1; MakeFileName(filename, modid, ".smb");
-    F := Files.New(filename); Files.Set(R, F, 0);
+    R := Files.Create(filename);
     Files.WriteInt(R, 0); (*placeholder*)
     Files.WriteInt(R, 0); (*placeholder for key to be inserted at the end*)
-    Files.WriteString(R, modid); Write(R, versionkey);
+    Files.WriteAsciiStr(R, modid); Write(R, versionkey);
     obj := topScope.next;
     WHILE obj # NIL DO
       IF obj.expo THEN
-        Write(R, obj.class); Files.WriteString(R, obj.name);
+        Write(R, obj.class); Files.WriteAsciiStr(R, obj.name);
         OutType(R, obj.type);
         IF obj.class = Typ THEN
           IF obj.type.form = Record THEN
@@ -339,19 +340,20 @@ MODULE ORB;   (*NW 25.6.2014  / 1.3.2019  in Oberon-07*)
       END ;
       obj := obj.next
     END ;
-    REPEAT Write(R, 0) UNTIL Files.Length(F) MOD 4 = 0;
+    REPEAT Write(R, 0) UNTIL Files.Size(R) MOD 4 = 0;
     FOR Ref := Record+1 TO maxTypTab-1 DO typtab[Ref] := NIL END ;
-    Files.Set(R, F, 0); sum := 0; Files.ReadInt(R, x);  (* compute key (checksum) *)
-    WHILE ~R.eof DO sum := sum + x; Files.ReadInt(R, x) END ;
-    F1 := Files.Old(filename); (*sum is new key*)
-    IF F1 # NIL THEN Files.Set(R1, F1, 4); Files.ReadInt(R1, oldkey) ELSE oldkey := sum+1 END ;
+    sum := Files.Seek(R, 0); sum := 0; x := Files.ReadInt(R);  (* compute key (checksum) *)
+    WHILE (Files.Status(R) = Files.OK) DO sum := sum + x; x := Files.ReadInt(R) END ;
+    R1 := Files.Open(filename); (*sum is new key*)
+    IF R1 # NIL THEN oldkey := Files.Seek(R1, 4); oldkey := Files.ReadInt(R1) ELSE oldkey := sum+1 END ;
     IF sum # oldkey THEN
-      IF newSF OR (F1 = NIL) THEN
-        key := sum; newSF := TRUE; Files.Set(R, F, 4); Files.WriteInt(R, sum); Files.Register(F)  (*insert checksum*)
+      IF newSF OR (R1 = NIL) THEN
+        key := Files.Seek(R, 4); key := sum; newSF := TRUE; Files.WriteInt(R, sum); Files.Close(R); (*insert checksum*)
       ELSE ORS.Mark("new symbol file inhibited")
       END
     ELSE newSF := FALSE; key := sum
     END
+    (* FIXME: close R and R1 ? *)
   END Export;
 
   PROCEDURE Init*;
