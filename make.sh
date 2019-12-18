@@ -11,10 +11,10 @@ help() {
 
 here=$(pwd)
 oberonc_bin=${here}/tools/oberonc/bin
-
+src_files="src/ORS.Mod src/ORB.Mod src/ORG.Mod+ src/ORP.Mod src/OberonRV.Mod"
 
 all() {
-    java -cp $oberonc_bin:. oberonc build src/ORS.Mod src/ORB.Mod src/ORG.Mod src/ORP.Mod
+    java -cp $oberonc_bin:. oberonc build $src_files
 }
 
 

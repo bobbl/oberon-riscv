@@ -1069,7 +1069,7 @@ MODULE ORG; (* N.Wirth, 16.4.2016 / 4.4.2017 / 31.5.2019  Oberon compiler; code 
     size := varsize + strx + comsize + (pc + nofimps + nofent + nofptrs + 1)*4;  (*varsize includes type descriptors*)
     
     ORB.MakeFileName(name, modid, ".rsc"); (*write code file*)
-    R := Files.Open(name); Files.WriteAsciiStr(R, modid); Files.WriteInt(R, key); Files.Write(R, version);
+    R := Files.Create(name); Files.WriteAsciiStr(R, modid); Files.WriteInt(R, key); Files.Write(R, version);
     Files.WriteInt(R, size);
     obj := ORB.topScope.next;
     WHILE (obj # NIL) & (obj.class = ORB.Mod) DO  (*imports*)
